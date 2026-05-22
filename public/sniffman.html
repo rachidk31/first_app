@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Sniff-Man</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    color: #fff;
+    font-family: monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  h1 { margin: 0 0 8px; font-size: 20px; letter-spacing: 2px; }
+  #score { margin-bottom: 8px; }
+  canvas {
+    background: #000;
+    border: 2px solid #fff;
+    touch-action: none;
+    max-width: 95vw;
+    image-rendering: pixelated;
+  }
+  #restart {
+    margin-top: 8px;
+    padding: 8px 16px;
+    font-family: monospace;
+    font-size: 14px;
+    background: #000;
+    color: #fff;
+    border: 2px solid #fff;
+    cursor: pointer;
+  }
+  #restart:active { background: #fff; color: #000; }
+  #hint { margin-top: 8px; font-size: 12px; text-align: center; padding: 0 8px; opacity: 0.7; }
+</style>
+</head>
+<body>
+<h1>SNIFF-MAN</h1>
+<div id="score">Lignes: 0</div>
+<canvas id="game"></canvas>
+<button id="restart">Rejouer</button>
+<div id="hint">Clavier : flèches — Mobile : glisse le doigt</div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const cell = 20;
+
+const maze = [
+  "####################",
+  "#..................#",
+  "#.PPPPPPPPPPPPPPPP.#",
+  "#..................#",
+  "#.##.##......##.##.#",
+  "#..................#",
+  "#....PPPPPPPPPP....#",
+  "#..................#",
+  "####.####..####.####",
+  "#.........S........#",
+  "####.####..####.####",
+  "#..................#",
+  "#....PPPPPPPPPP....#",
+  "#..................#",
+  "#.##.##......##.##.#",
+  "#..................#",
+  "#.PPPPPPPPPPPPPPPP.#",
+  "#..................#",
+  "####################",
+];
+
+const rows = maze.length;
+const cols = maze[0].length;
+canvas.width = cols * cell;
+canvas.height = rows * cell;
+
+let grid, pac, ghosts, score, totalPowder, alive, won, tickCount;
+
+function reset() {
+  grid = maze.map(r => r.split(''));
+  let sx = 10, sy = 9;
+  totalPowder = 0;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      if (grid[y][x] === 'S') { sx = x; sy = y; grid[y][x] = '.'; }
+      if (grid[y][x] === 'P') totalPowder++;
+    }
+  }
+  pac = {x: sx, y: sy, dir: {x: 0, y: 0}, nextDir: {x: 0, y: 0}};
+  ghosts = [
+    {x: 1, y: 1, dir: {x: 1, y: 0}},
+    {x: cols - 2, y: 1, dir: {x: -1, y: 0}},
+    {x: cols - 2, y: rows - 2, dir: {x: 0, y: -1}},
+  ];
+  score = 0;
+  alive = true;
+  won = false;
+  tickCount = 0;
+  updateScore();
+  draw();
+}
+
+function updateScore() {
+  document.getElementById('score').textContent = 'Lignes: ' + score + ' / ' + totalPowder;
+}
+
+function canMove(x, y) {
+  if (x < 0 || x >= cols || y < 0 || y >= rows) return false;
+  return grid[y][x] !== '#';
+}
+
+function step() {
+  if (!alive || won) return;
+  tickCount++;
+
+  if (canMove(pac.x + pac.nextDir.x, pac.y + pac.nextDir.y)) {
+    pac.dir = pac.nextDir;
+  }
+  if (canMove(pac.x + pac.dir.x, pac.y + pac.dir.y)) {
+    pac.x += pac.dir.x;
+    pac.y += pac.dir.y;
+  }
+
+  if (grid[pac.y][pac.x] === 'P') {
+    grid[pac.y][pac.x] = '.';
+    score++;
+    updateScore();
+    if (score === totalPowder) won = true;
+  }
+
+  if (tickCount % 2 === 0) {
+    for (const g of ghosts) moveGhost(g);
+  }
+
+  for (const g of ghosts) {
+    if (g.x === pac.x && g.y === pac.y) alive = false;
+  }
+
+  draw();
+}
+
+function moveGhost(g) {
+  const dirs = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+  const options = dirs.filter(d =>
+    canMove(g.x + d.x, g.y + d.y) &&
+    !(d.x === -g.dir.x && d.y === -g.dir.y)
+  );
+  if (options.length === 0) {
+    g.dir = {x: -g.dir.x, y: -g.dir.y};
+  } else if (canMove(g.x + g.dir.x, g.y + g.dir.y) && Math.random() > 0.25) {
+    // keep going
+  } else {
+    g.dir = options[Math.floor(Math.random() * options.length)];
+  }
+  if (canMove(g.x + g.dir.x, g.y + g.dir.y)) {
+    g.x += g.dir.x;
+    g.y += g.dir.y;
+  }
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const c = grid[y][x];
+      if (c === '#') {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x * cell + 3, y * cell + 3, cell - 6, cell - 6);
+      } else if (c === 'P') {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(x * cell + cell/2, y * cell + cell/2, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  drawPacman();
+  for (const g of ghosts) drawGhost(g);
+
+  if (!alive || won) {
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, canvas.height/2 - 40, canvas.width, 80);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(won ? 'TOUT SNIFFÉ' : 'BAD TRIP', canvas.width/2, canvas.height/2);
+    ctx.font = '12px monospace';
+    ctx.fillText('Appuie sur Rejouer', canvas.width/2, canvas.height/2 + 22);
+  }
+}
+
+function drawPacman() {
+  const cx = pac.x * cell + cell / 2;
+  const cy = pac.y * cell + cell / 2;
+  const r = cell / 2 - 1;
+
+  let dirAngle = 0;
+  if (pac.dir.x === 1) dirAngle = 0;
+  else if (pac.dir.x === -1) dirAngle = Math.PI;
+  else if (pac.dir.y === -1) dirAngle = -Math.PI / 2;
+  else if (pac.dir.y === 1) dirAngle = Math.PI / 2;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(dirAngle);
+
+  const mouth = 0.25 + Math.abs(Math.sin(tickCount / 3)) * 0.15;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.arc(0, 0, r, mouth, -mouth + Math.PI * 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Gros pif qui dépasse vers l'avant
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.ellipse(r - 1, -2, 6, 3.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Narine
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(r + 2, -2, 1.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Œil
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(0, -r/2 - 1, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawGhost(g) {
+  const cx = g.x * cell + cell / 2;
+  const cy = g.y * cell + cell / 2;
+  const r = cell / 2 - 2;
+
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(cx, cy - 1, r, Math.PI, 0, false);
+  ctx.lineTo(cx + r, cy + r - 1);
+  ctx.lineTo(cx + r * 0.5, cy + r - 4);
+  ctx.lineTo(cx, cy + r - 1);
+  ctx.lineTo(cx - r * 0.5, cy + r - 4);
+  ctx.lineTo(cx - r, cy + r - 1);
+  ctx.closePath();
+  ctx.fill();
+
+  // Yeux (trous noirs)
+  ctx.fillStyle = '#000';
+  ctx.fillRect(cx - 5, cy - 4, 3, 4);
+  ctx.fillRect(cx + 2, cy - 4, 3, 4);
+}
+
+function turn(nx, ny) {
+  pac.nextDir = {x: nx, y: ny};
+}
+
+document.addEventListener('keydown', e => {
+  const k = e.key;
+  if (k === 'ArrowUp') turn(0, -1);
+  else if (k === 'ArrowDown') turn(0, 1);
+  else if (k === 'ArrowLeft') turn(-1, 0);
+  else if (k === 'ArrowRight') turn(1, 0);
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(k)) e.preventDefault();
+});
+
+let touchStart = null;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  touchStart = {x: t.clientX, y: t.clientY};
+}, {passive: false});
+canvas.addEventListener('touchmove', e => {
+  if (!touchStart) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
+  if (Math.abs(dx) > Math.abs(dy)) turn(dx > 0 ? 1 : -1, 0);
+  else turn(0, dy > 0 ? 1 : -1);
+  touchStart = {x: t.clientX, y: t.clientY};
+}, {passive: false});
+canvas.addEventListener('touchend', () => { touchStart = null; });
+
+document.getElementById('restart').addEventListener('click', reset);
+
+reset();
+setInterval(step, 150);
+</script>
+</body>
+</html>
